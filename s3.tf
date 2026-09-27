@@ -34,6 +34,54 @@ resource "aws_cloudfront_origin_access_control" "frontend" {
   signing_protocol                  = "sigv4"
 }
 
+# ── Security Headers Policy ───────────────────────────────────────────────────
+# Adjunta headers de seguridad OWASP a todas las respuestas de CloudFront.
+# Se aplica tanto al behavior del frontend (S3) como al del backend (ALB/API).
+resource "aws_cloudfront_response_headers_policy" "security" {
+  name    = "${var.project}-security-headers"
+  comment = "OWASP security headers for ${var.project}"
+
+  security_headers_config {
+    # Impide que el navegador adivine el Content-Type (sniffing attacks)
+    content_type_options {
+      override = true
+    }
+
+    # Impide que la página se cargue dentro de un iframe (clickjacking)
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    # Fuerza HTTPS durante 1 año incluyendo subdominios (HSTS)
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      preload                    = true
+      override                   = true
+    }
+
+    # Controla cuánta información de referencia se envía en las solicitudes
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+
+    # CSP: solo permite recursos del mismo origen + Wompi y fuentes de Google
+    content_security_policy {
+      content_security_policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://checkout.wompi.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://api.wompi.co https://sandbox.wompi.co; frame-src https://checkout.wompi.co; object-src 'none'; base-uri 'self';"
+      override                = true
+    }
+
+    # Controla las características del navegador disponibles para la página
+    xss_protection {
+      mode_block = true
+      protection = true
+      override   = true
+    }
+  }
+}
+
 # ── CloudFront Distribution ────────────────────────────────────────────────────
 resource "aws_cloudfront_distribution" "frontend" {
   enabled             = true
@@ -62,11 +110,12 @@ resource "aws_cloudfront_distribution" "frontend" {
 
   # Behavior para /api/* — sin cache, reenvía headers y query strings al ALB
   ordered_cache_behavior {
-    path_pattern           = "/api/*"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "alb-backend"
-    viewer_protocol_policy = "redirect-to-https"
+    path_pattern                   = "/api/*"
+    allowed_methods                = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods                 = ["GET", "HEAD"]
+    target_origin_id               = "alb-backend"
+    viewer_protocol_policy         = "redirect-to-https"
+    response_headers_policy_id     = aws_cloudfront_response_headers_policy.security.id
 
     forwarded_values {
       query_string = true
@@ -80,10 +129,11 @@ resource "aws_cloudfront_distribution" "frontend" {
   }
 
   default_cache_behavior {
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "s3-frontend"
-    viewer_protocol_policy = "redirect-to-https"  # fuerza HTTPS — bonus points OWASP
+    allowed_methods                = ["GET", "HEAD", "OPTIONS"]
+    cached_methods                 = ["GET", "HEAD"]
+    target_origin_id               = "s3-frontend"
+    viewer_protocol_policy         = "redirect-to-https"
+    response_headers_policy_id     = aws_cloudfront_response_headers_policy.security.id
 
     forwarded_values {
       query_string = false
