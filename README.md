@@ -40,6 +40,16 @@ Todos los responses incluyen los siguientes headers de seguridad OWASP:
 - Security Groups restrictivos: solo el ALB accede al puerto del contenedor
 - Secrets en SSM Parameter Store (no en variables de entorno en texto plano)
 
+## URLs desplegadas
+
+| Recurso | URL |
+|---|---|
+| Frontend (CloudFront) | https://d1ooypu8bqmie2.cloudfront.net |
+| API Docs (Swagger) | https://d1ooypu8bqmie2.cloudfront.net/api/docs |
+| Backend (ALB interno) | http://jp-store-alb-1031393668.us-east-1.elb.amazonaws.com |
+
+> El ALB no tiene HTTPS propio — todo el tráfico externo entra por CloudFront que provee TLS.
+
 ## Uso
 
 ```bash
@@ -53,5 +63,6 @@ terraform apply -var-file=terraform.tfvars
 ```hcl
 project     = "jp-store"
 environment = "production"
+region      = "us-east-1"
 db_password = "<secret>"
 ```
